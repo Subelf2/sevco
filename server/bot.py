@@ -11,7 +11,7 @@ from discord.ui import Button, View
 import random
 import uuid
 #import json
-#import asyncio
+import asyncio
 
 from datetime import datetime
 from datetime import timedelta
@@ -99,6 +99,45 @@ class VoteView(discord.ui.View):
 #====================================================== Fonctions ======================================================
 #=======================================================================================================================
 
+async def finalize_vote(session_id, channel_id):
+
+    session = get_session(session_id)
+    if not session:
+        return
+
+    candidates = session[1].split("|")
+
+    votes = get_votes(session_id)
+
+    counts = [0] * len(candidates)
+
+    for v in votes:
+        choice = v[0]
+        if 0 <= choice < len(candidates):
+            counts[choice] += 1
+
+    channel = bot.get_channel(channel_id)
+    if not channel:
+        return
+
+    embed = discord.Embed(
+        title=f"🏁 Résultats du vote {session_id}",
+        color=discord.Color.gold()
+    )
+
+    for c, n in zip(candidates, counts):
+        embed.add_field(name=c, value=str(n), inline=False)
+
+    await channel.send(embed=embed)
+
+async def schedule_vote_end(session_id, end_time, channel_id):
+
+    delay = end_time.timestamp() - datetime.now().timestamp()
+
+    if delay > 0:
+        await asyncio.sleep(delay)
+
+    await finalize_vote(session_id, channel_id)
 
 #=======================================================================================================================
 #====================================================== Commandes ======================================================
@@ -172,67 +211,79 @@ async def create_vote(ctx, duration_minutes: int, *candidates):
         )
     )
 
+    bot.loop.create_task(
+    schedule_vote_end(
+        session_id,
+        end_time,
+        ctx.channel.id
+    )
+)
+
 
 @bot.command()
 async def vote(ctx, *, token):
 
-    try:
-        vote_data = decrypt_vote_token(token)
+    vote_data = decrypt_vote_token(token)
 
-        register_vote(
-            vote_data["participation_id"],
-            vote_data["session_id"],
-            vote_data["choice"]
-        )
+    session = get_session(vote_data["session_id"])
 
-        await ctx.send(
-            "Vote enregistré."
-        )
-
-    except Exception as e:
-        await ctx.send(
-            f"Erreur : {e}"
-        )
-
-
-@bot.command()
-async def results(ctx, session_id):
-
-    session = get_session(session_id)
-
-    if session is None:
-        await ctx.send(
-            "Session inconnue."
-        )
+    if not session:
+        await ctx.send("Session inconnue.")
         return
 
-    candidates = session[1].split("|")
+    end_time = float(session[2])
 
-    counts = [0] * len(candidates)
+    if datetime.now().timestamp() > end_time:
+        await ctx.send("Vote terminé. Impossible de voter.")
+        return
 
-    votes = get_votes(session_id)
-
-    for vote in votes:
-        choice = vote[0]
-
-        if 0 <= choice < len(candidates):
-            counts[choice] += 1
-
-    embed = discord.Embed(
-        title=f"Résultats {session_id}",
-        color=discord.Color.gold()
+    register_vote(
+        vote_data["participation_id"],
+        vote_data["session_id"],
+        vote_data["choice"]
     )
 
-    for candidate, score in zip(
-        candidates,
-        counts
-    ):
-        embed.add_field(
-            name=candidate,
-            value=str(score)
-        )
+    await ctx.send("Vote enregistré.")
 
-    await ctx.send(embed=embed)
+
+# @bot.command()
+# async def results(ctx, session_id):
+
+#     session = get_session(session_id)
+
+#     if session is None:
+#         await ctx.send(
+#             "Session inconnue."
+#         )
+#         return
+
+#     candidates = session[1].split("|")
+
+#     counts = [0] * len(candidates)
+
+#     votes = get_votes(session_id)
+
+#     for vote in votes:
+#         choice = vote[0]
+
+#         if 0 <= choice < len(candidates):
+#             counts[choice] += 1
+
+#     embed = discord.Embed(
+#         title=f"Résultats {session_id}",
+#         color=discord.Color.gold()
+#     )
+
+#     for candidate, score in zip(
+#         candidates,
+#         counts
+#     ):
+#         embed.add_field(
+#             name=candidate,
+#             value=str(score)
+#         )
+
+#     await ctx.send(embed=embed)
 
 
 @bot.event
