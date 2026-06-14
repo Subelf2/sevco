@@ -1,97 +1,78 @@
-# SEVCO - Protocole de Vote Électronique Sécurisé
+# SEVCO - Encrypted End-to-End Voting Protocol
 
-Bienvenue dans **SEVCO**, un système de vote cryptographique de bout en bout basé sur Discord. Ce projet permet des élections sécurisées où aucune autorité unique ne peut tricher et où chaque électeur peut vérifier son vote.
+A cryptographic voting system built on Discord that prevents single-authority manipulation and allows voters to verify their ballots.
 
-## 📋 Table des matières
+## Table of Contents
 
-- [Qu'est-ce que SEVCO ?](#quest-ce-que-sevco-)
-- [Installation des dépendances](#installation-des-dépendances)
-- [Guide de démarrage rapide](#guide-de-démarrage-rapide)
-- [Démonstration complète étape par étape](#démonstration-complète-étape-par-étape)
-- [Vérifiabilité individuelle](#vérifiabilité-individuelle)
-
----
-
-## Qu'est-ce que SEVCO ?
-
-SEVCO est un protocole de vote électronique qui garantit :
-
-- **Sécurité** : Les votes sont chiffrés de bout en bout, même Discord ne peut pas les lire
-- **Intégrité** : Aucune autorité unique ne peut manipuler l'élection (distribution du pouvoir en 3)
-- **Vérifiabilité** : Chaque électeur peut vérifier que son vote a été enregistré correctement
-- **Transparence** : Le système utilise la cryptographie à preuve sans connaissance (ZKP)
-
-### Comment ça marche ?
-
-1. **Bots Discord** : Coordonnent l'élection et vérifient les mathématiques cryptographiques
-2. **3 Autorités** : Détiennent chacune 1/3 de la clé de déchiffrement finale
-3. **Client local** : Application Python pour chiffrer votre vote en privé, sans que Discord ne le voie
-4. **Base de données** : Stocke les votes chiffrés dans une urne sécurisée
+- [What is SEVCO?](#what-is-sevco)
+- [Setup](#setup)
+- [Quick Start](#quick-start)
+- [Full Walkthrough](#full-walkthrough)
+- [Ballot Verification](#ballot-verification)
 
 ---
 
-## Installation des dépendances
+## What is SEVCO?
 
-### Prérequis système
+SEVCO uses threshold cryptography to implement a verifiable voting protocol:
 
-- **Python 3.8+** installé sur votre ordinateur
-- **Git** pour cloner le projet
-- Un **serveur Discord** (gratuit) pour tester
+- **End-to-end encrypted**: Votes are encrypted on your machine. Discord never sees the plaintext ballot.
+- **Threshold decryption**: 3 authorities each hold 1/3 of the decryption key. No single authority can decrypt votes alone.
+- **Verifiable**: Every voter gets a tracking hash to confirm their ballot is in the urn.
+- **Cryptographically sound**: Uses zero-knowledge proofs (ZKP) to prevent forged ballots.
 
-### Étape 1 : Cloner le projet
+### Architecture
+
+- **5 Discord bots**: Server (election manager), Credentials (voter registration), and 3 Authorities (threshold holders)
+- **Local voting app**: Python GUI that encrypts your vote without exposing it to Discord
+- **Database**: Stores encrypted ballots in a secure urn
+
+---
+
+## Setup
+
+### Requirements
+
+- Python 3.8+
+- Discord server (free)
+- 5 terminal windows
+
+### Installation
 
 ```bash
 git clone https://github.com/Subelf2/sevco.git
 cd sevco
-```
-
-### Étape 2 : Créer un environnement virtuel (recommandé)
-
-```bash
-# Créer l'environnement virtuel
 python -m venv venv
 
-# Activer l'environnement
-# Sur macOS/Linux :
+# On macOS/Linux:
 source venv/bin/activate
 
-# Sur Windows :
+# On Windows:
 venv\Scripts\activate
-```
 
-### Étape 3 : Installer les dépendances
-
-```bash
 pip install -r requirements.txt
 ```
 
-### Étape 4 : Configurer les bots Discord
+### Configure Discord Bots
 
-Pour que les bots fonctionnent, vous devez créer une **application Discord** et obtenir les tokens :
-
-1. Allez sur https://discord.com/developers/applications
-2. Cliquez sur "New Application"
-3. Allez dans l'onglet "Bot" et cliquez "Add Bot"
-4. Copiez le token
-5. Créez un fichier `.env` à la racine du projet :
+1. Go to https://discord.com/developers/applications
+2. Create 5 applications (or use the same one with different bot tokens)
+3. Add a Bot to each application and copy its token
+4. Create `.env` at the project root:
 
 ```env
-DISCORD_TOKEN_SERVER=votre_token_ici
-DISCORD_TOKEN_CREDENTIALS=votre_token_ici
-DISCORD_TOKEN_AUTH1=votre_token_ici
-DISCORD_TOKEN_AUTH2=votre_token_ici
-DISCORD_TOKEN_AUTH3=votre_token_ici
+DISCORD_TOKEN_SERVER=your_token_here
+DISCORD_TOKEN_CREDENTIALS=your_token_here
+DISCORD_TOKEN_AUTH1=your_token_here
+DISCORD_TOKEN_AUTH2=your_token_here
+DISCORD_TOKEN_AUTH3=your_token_here
 ```
-
-> **Astuce** : Vous pouvez créer plusieurs applications ou utiliser la même avec des tokens différents. Chaque bot a besoin d'un token valide.
 
 ---
 
-## Guide de démarrage rapide
+## Quick Start
 
-Si vous êtes pressé, voici le minimum pour faire un test :
-
-### 1. Lancez les 5 bots (dans 5 terminaux différents)
+Open 5 terminals and run:
 
 ```bash
 # Terminal 1
@@ -100,81 +81,64 @@ python bot_server.py
 # Terminal 2
 python bot_credentials.py
 
-# Terminal 3
+# Terminals 3, 4, 5
 python bot_authority_1.py
-
-# Terminal 4
 python bot_authority_2.py
-
-# Terminal 5
 python bot_authority_3.py
 ```
 
-### 2. Sur Discord, créez une élection
+On Discord:
 
 ```
-!server init MaTestElection Alice Bob Charlie
+!server init TestElection Alice Bob Charlie
+!auth1 join TestElection
+!auth2 join TestElection
+!auth3 join TestElection
+!server open TestElection
+!id add TestElection @you
 ```
 
-### 3. Les autorités rejoignent
-
-```
-!auth1 join MaTestElection
-!auth2 join MaTestElection
-!auth3 join MaTestElection
-```
-
-### 4. Ouvrez le vote
-
-```
-!server open MaTestElection
-```
-
-### 5. Ajoutez un électeur (vous-même)
-
-```
-!id add MaTestElection @VotrePseudo
-```
-
-Le bot vous envoie un message privé avec votre **Jeton de Vote** (un long bloc de texte).
-
-### 6. Votez avec l'application locale
+The bot sends you a voting token in DM. Open a 6th terminal:
 
 ```bash
-# Dans un 6ème terminal
 python client_app.py
 ```
 
-Une fenêtre s'ouvre. Collez votre Jeton de Vote et suivez les instructions.
+Paste the token, select a candidate, save `ballot.json`. Back on Discord:
 
-### 7. Terminez l'élection
-
-Sur Discord :
 ```
-!server close MaTestElection
-!auth1 decrypt MaTestElection
-!auth2 decrypt MaTestElection
-!auth3 decrypt MaTestElection
-!server tally MaTestElection
+!server process_vote
 ```
 
-Voilà ! Les résultats s'affichent. 🎉
+(Drag-drop the file, then send the command)
+
+Close the election:
+
+```
+!server close TestElection
+!auth1 decrypt TestElection
+!auth2 decrypt TestElection
+!auth3 decrypt TestElection
+!server tally TestElection
+```
+
+Done. Results appear.
 
 ---
 
-## Démonstration complète étape par étape
+## Full Walkthrough
 
-### Étape 0 : Nettoyage (première fois ou test précédent)
+### Step 0: Clean Up
 
-Supprimez les anciens fichiers de test s'ils existent :
+If you ran this before, remove old test files:
 
 ```bash
-rm -f belenios.db secrets_Auth1.json secrets_Auth2.json secrets_Auth3.json server_rsa.pem client_rsa.pem
+rm -f belenios.db secrets_Auth*.json *_rsa.pem
 ```
 
-### Étape 1 : Allumer l'infrastructure
+### Step 1: Start the Infrastructure
 
-Ouvrez **5 terminaux différents** et lancez-les un par un :
+Launch all 5 bots in separate terminals:
 
 ```bash
 python bot_server.py
@@ -184,156 +148,116 @@ python bot_authority_2.py
 python bot_authority_3.py
 ```
 
-Vos bots devraient maintenant apparaître "En ligne" sur votre serveur Discord. ✅
+Wait until all bots show "online" on Discord.
 
-### Étape 2 : Créer l'élection
-
-Sur votre serveur Discord, tapez :
+### Step 2: Create the Election
 
 ```
-!server init MonElection Alice Bob Charlie
+!server init MyElection Alice Bob Charlie
 ```
 
-Cette commande crée une élection appelée "MonElection" avec 3 candidats.
+### Step 3: Authorities Join
 
-### Étape 3 : Les Autorités rejoignent (Sécurité)
-
-Pour garantir qu'une seule personne ne puisse pas tricher, le pouvoir de dépouillement est divisé en 3. Chaque bot "Autorité" doit rejoindre l'élection :
+Each authority holds 1/3 of the decryption key. None can decrypt alone.
 
 ```
-!auth1 join MonElection
-!auth2 join MonElection
-!auth3 join MonElection
+!auth1 join MyElection
+!auth2 join MyElection
+!auth3 join MyElection
 ```
 
-**Pourquoi 3 autorités ?** Aucune d'elles ne peut déchiffrer les votes seule. Il faut les 3 ensemble pour voir le résultat.
-
-### Étape 4 : Ouvrir les votes
-
-Maintenant que la sécurité est en place, le serveur ouvre l'élection :
+### Step 4: Open Voting
 
 ```
-!server open MonElection
+!server open MyElection
 ```
 
-### Étape 5 : Inscrire un électeur
-
-Le système distribue une "carte d'électeur" secrète. Mentionnez l'utilisateur Discord qui a le droit de voter :
+### Step 5: Register a Voter
 
 ```
-!id add MonElection @VotrePseudo
+!id add MyElection @yourname
 ```
 
-Le Bot d'Identification vous envoie un **Message Privé** contenant un gros bloc de texte chiffré. C'est votre **Jeton de Vote**.
+The Credentials bot sends you a **voting token** (encrypted blob) via DM. Save it.
 
-> **Important** : Ce token ne doit jamais être partagé. Il vous permet de voter de manière sécurisée.
-
-### Étape 6 : Voter (Sur votre ordinateur)
-
-Pour que Discord ne voie jamais votre vote en clair, le vote se fait sur une **application externe** :
+### Step 6: Cast Your Vote
 
 ```bash
 python client_app.py
 ```
 
-Une fenêtre graphique s'ouvre. Suivez ces étapes :
+- Paste the voting token
+- Click "Decrypt and Verify Token"
+- Select your candidate
+- Click "Encrypt My Vote"
+- Click "Save ballot.json" to your desktop
+- **Note the tracking hash displayed**
 
-1. **Collez** le Jeton de Vote reçu en Message Privé
-2. Cliquez sur **"Decrypt and Verify Token"**
-3. **Choisissez** votre candidat (Alice, Bob ou Charlie)
-4. Cliquez sur **"Encrypt My Vote"**
-5. Cliquez sur **"Save ballot.json"** et enregistrez le fichier sur votre Bureau
-6. **Notez** le "Tracking Hash" (numéro de suivi) affiché à l'écran !
+### Step 7: Submit the Ballot
 
-### Étape 7 : Déposer le vote dans l'urne
-
-Retournez sur Discord. **Glissez-déposez** votre fichier `ballot.json` dans le salon textuel et envoyez :
+Go back to Discord. Drag-drop `ballot.json` into a text channel:
 
 ```
 !server process_vote
 ```
 
-Le Serveur va vérifier les mathématiques complexes de votre fichier et le placer dans l'urne. ✅
+The server verifies the ballot cryptographically and adds it to the encrypted urn.
 
-### Étape 8 : Fermer l'urne
-
-Une fois que tout le monde a voté, clôturez l'élection :
+### Step 8: Close the Urn
 
 ```
-!server close MonElection
+!server close MyElection
 ```
 
-### Étape 9 : Le Dépouillement
+### Step 9: Decrypt
 
-Le Serveur ne peut pas lire les votes seul. Il faut demander aux 3 Autorités d'utiliser leurs clés secrètes :
-
-```
-!auth1 decrypt MonElection
-!auth2 decrypt MonElection
-!auth3 decrypt MonElection
-```
-
-Chaque autorité effectue une partie du déchiffrement.
-
-### Étape 10 : Les Résultats !
-
-Une fois que les 3 autorités ont fait leur travail, compilez les résultats finaux :
+Each authority decrypts their share:
 
 ```
-!server tally MonElection
+!auth1 decrypt MyElection
+!auth2 decrypt MyElection
+!auth3 decrypt MyElection
 ```
 
-Les résultats s'affichent ! 🎉
+### Step 10: Tally Results
+
+```
+!server tally MyElection
+```
+
+Results appear. Election complete.
 
 ---
 
-## Vérifiabilité individuelle
+## Ballot Verification
 
-L'une des grandes forces de SEVCO : **chacun peut vérifier que son vote a été enregistré**.
-
-À tout moment, n'importe quel électeur peut demander au serveur d'afficher tous les **Numéros de Suivi** présents dans l'urne :
+At any time, verify your ballot was recorded:
 
 ```
-!server public_urn MonElection
+!server public_urn MyElection
 ```
 
-Cherchez-y le numéro que l'application locale vous avait donné à l'étape 6 !
-
-Si votre Tracking Hash y figure, c'est que votre vote a bien été enregistré. ✅
+Look for your tracking hash from Step 6. If it's there, your ballot made it into the urn.
 
 ---
 
-## Dépannage
+## Troubleshooting
 
-### Les bots ne se lancent pas
-
-- Vérifiez que les **tokens Discord** sont corrects dans `.env`
-- Vérifiez que les **dépendances** sont installées : `pip install -r requirements.txt`
-- Vérifiez votre **connexion Internet**
-
-### Erreur "token expired"
-
-Régénérez vos tokens sur https://discord.com/developers/applications
-
-### L'application client_app.py ne démarre pas
-
-Assurez-vous que le module graphique est installé :
-
-```bash
-pip install tkinter
-```
-
-(Tkinter est généralement inclus avec Python)
+| Problem | Solution |
+|---------|----------|
+| Bots won't start | Check `.env` tokens are valid. Verify dependencies: `pip install -r requirements.txt` |
+| "Token expired" error | Regenerate tokens on https://discord.com/developers/applications |
+| `client_app.py` won't start | Install tkinter: `pip install tkinter` (usually included with Python) |
 
 ---
 
-## Pour en savoir plus
+## References
 
-Ce projet implémente le protocole **Belenios**, un système de vote électronique académique et sécurisé.
+This project implements the **Belenios** voting protocol.
 
-- Documentation Belenios : https://www.belenios.org/
-- Cryptographie ZKP : https://fr.wikipedia.org/wiki/Preuve_%C3%A0_divulgation_nulle_de_connaissance
+- Belenios docs: https://www.belenios.org/
+- ZKP cryptography: https://en.wikipedia.org/wiki/Zero-knowledge_proof
 
 ---
 
-**Bon vote ! 🗳️**
+**Vote responsibly.** 🗳️
