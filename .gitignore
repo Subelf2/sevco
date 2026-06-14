@@ -1,2 +1,3 @@
 **/__pycache__/
 /server/config.py
+/server/*.db
