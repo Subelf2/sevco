@@ -10,7 +10,7 @@ from discord.ui import Button, View
 
 import random
 import uuid
-#import json
+import hashlib
 import asyncio
 
 from datetime import datetime
@@ -80,7 +80,7 @@ class VoteView(discord.ui.View):
 
         try:
             await interaction.user.send(
-                f"Votre token :\n```{token}```"
+                f"Votre token :\n```{token}```\n\nApres chiffrement via le client, envoyez le token ici avec $vote [token]"
             )
 
             await interaction.response.send_message(
@@ -106,29 +106,79 @@ async def finalize_vote(session_id, channel_id):
         return
 
     candidates = session[1].split("|")
-
-    votes = get_votes(session_id)
+    votes = get_votes_with_hash(session_id)
 
     counts = [0] * len(candidates)
+    hashes_by_candidate = [[] for _ in candidates]
 
-    for v in votes:
-        choice = v[0]
+    for choice, vote_hash in votes:
         if 0 <= choice < len(candidates):
             counts[choice] += 1
+            hashes_by_candidate[choice].append(vote_hash)
 
     channel = bot.get_channel(channel_id)
     if not channel:
         return
 
+    total = sum(counts)
+    max_votes = max(counts) if total > 0 else 0
+    winners = [candidates[i] for i, c in enumerate(counts) if c == max_votes]
+
+    # ── Embed résultats ──
     embed = discord.Embed(
-        title=f"🏁 Résultats du vote {session_id}",
+        title=f"🏁 Résultats du vote `{session_id}`",
         color=discord.Color.gold()
     )
 
-    for c, n in zip(candidates, counts):
-        embed.add_field(name=c, value=str(n), inline=False)
+    bar_width = 16
+    for candidate, count in zip(candidates, counts):
+        filled = round(bar_width * count / total) if total > 0 else 0
+        bar = "█" * filled + "░" * (bar_width - filled)
+        pct = round(100 * count / total) if total > 0 else 0
+        embed.add_field(
+            name=candidate,
+            value=f"`{bar}` {count} vote(s) ({pct}%)",
+            inline=False
+        )
 
-    await channel.send(embed=embed)
+    if len(winners) == 1:
+        embed.add_field(name="🥇 Vainqueur", value=winners[0], inline=False)
+    else:
+        embed.add_field(name="🤝 Égalité", value=" · ".join(winners), inline=False)
+
+    embed.set_footer(text=f"{total} bulletin(s) · Contre-valeurs dans le fichier joint")
+
+    # ── Fichier contre-valeurs ──
+    import io
+    col1, col2 = 22, 66
+    separator = "─" * (col1 + col2 + 3)
+    file_lines = [
+        f"Contre-valeurs — session {session_id}",
+        f"Générées le {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "",
+        f"{'Candidat voté':<{col1}} {'Contre-valeur SHA-256':<{col2}}",
+        separator,
+    ]
+
+    for choice, vote_hash in votes:
+        candidate = candidates[choice] if 0 <= choice < len(candidates) else "?"
+        file_lines.append(f"{candidate:<{col1}} {vote_hash}")
+
+    file_lines += [
+        separator,
+        "",
+        "Pour vérifier votre vote :",
+        "  SHA256( <participation_id> | <numéro_du_choix> )",
+        "  Votre numéro de choix : 0 = premier candidat, 1 = second, etc.",
+    ]
+
+    file_content = "\n".join(file_lines).encode("utf-8")
+    file = discord.File(
+        fp=io.BytesIO(file_content),
+        filename=f"vote_result_{session_id}.txt"
+    )
+
+    await channel.send(embed=embed, file=file)
 
 async def schedule_vote_end(session_id, end_time, channel_id):
 
@@ -147,7 +197,7 @@ async def schedule_vote_end(session_id, end_time, channel_id):
 async def on_ready():
 	print("Ready !!!")
 	await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name=random.choice(presence_choice)))
-	
+
 @bot.command()
 async def create_vote(ctx, duration_minutes: int, *candidates):
 
@@ -223,27 +273,50 @@ async def create_vote(ctx, duration_minutes: int, *candidates):
 @bot.command()
 async def vote(ctx, *, token):
 
-    vote_data = decrypt_vote_token(token)
+    try:
+        vote_data = decrypt_vote_token(token)
+    except Exception:
+        await ctx.author.send(
+            "❌ **Token de vote invalide ou corrompu.**\n"
+            "Vérifiez que vous avez bien copié le token généré par le client."
+        )
+        return
 
     session = get_session(vote_data["session_id"])
 
     if not session:
-        await ctx.send("Session inconnue.")
+        await ctx.author.send(
+            f"❌ **Session `{vote_data['session_id']}` inconnue.**"
+        )
         return
 
     end_time = float(session[2])
 
     if datetime.now().timestamp() > end_time:
-        await ctx.send("Vote terminé. Impossible de voter.")
+        await ctx.author.send(
+            "❌ **Vote terminé.** Impossible de soumettre un bulletin après la clôture."
+        )
         return
 
-    register_vote(
-        vote_data["participation_id"],
-        vote_data["session_id"],
-        vote_data["choice"]
+    participation_id = vote_data["participation_id"]
+    choice = vote_data["choice"]
+
+    # Calcul de la contre-valeur
+    raw = f"{participation_id}|{choice}".encode()
+    vote_hash = hashlib.sha256(raw).hexdigest()
+
+    register_vote(participation_id, vote_data["session_id"], choice, vote_hash)
+
+    await ctx.author.send(
+        "✅ **Vote enregistré.**\n\n"
+        "Compare ta contre-valeur (affichée par le client au moment du vote) "
+        "avec le tableau publié à la fin de la session pour vérifier que ton bulletin n'a pas été altéré."
     )
 
-    await ctx.send("Vote enregistré.")
+    try:
+        await ctx.message.delete()
+    except discord.Forbidden:
+        pass
 
 
 # @bot.command()
@@ -287,20 +360,77 @@ async def vote(ctx, *, token):
 
 
 @bot.event
-async def on_ready():
-    print(
-        f"Connecté comme {bot.user}"
-    )
+async def on_command_error(ctx, error):
+    """Envoie l'erreur en DM à l'utilisateur."""
+    msg = str(error)
+
+    if isinstance(error, commands.MissingRequiredArgument):
+        msg = f"Argument manquant : `{error.param.name}`"
+    elif isinstance(error, commands.BadArgument):
+        msg = f"Argument invalide : {error}"
+    elif isinstance(error, commands.CommandNotFound):
+        return  # on ignore silencieusement
+
+    try:
+        await ctx.author.send(
+            f"❌ **Erreur sur `${ctx.command}`**\n{msg}\n\n"
+            f"Utilise `$help` pour voir l'utilisation correcte."
+        )
+    except discord.Forbidden:
+        await ctx.send(f"❌ {msg}", delete_after=10)
 
 @bot.command()
 async def help(ctx):
-	await ctx.message.delete()
-	embed = discord.Embed(title = "**Menu D'aide**", color = 0xFFD700)
-	embed.add_field(name="**Liste des commandes**", value = '''
-		`first` : description
-		`second` : description
-		''', inline = False)
-	await ctx.send(embed = embed)
+    await ctx.message.delete()
+    embed = discord.Embed(
+        title="📖 Aide — Vote Sécurisé",
+        color=0x5b7fff
+    )
+
+    embed.add_field(
+        name="`$create_vote <durée_minutes> <candidat1> <candidat2> ...`",
+        value=(
+            "Crée une nouvelle session de vote.\n"
+            "Un bouton **Participer** est affiché dans le salon — cliquez dessus pour recevoir votre token en DM.\n"
+            "**Exemple :** `$create_vote 10 Alice Bob Charlie`"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="`$vote <token>`",
+        value=(
+            "Soumet votre vote chiffré.\n"
+            "Le token est généré par le client Python après avoir choisi votre candidat.\n"
+            "**Exemple :** `$vote eyJ...`"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🔐 Comment voter",
+        value=(
+            "1. Lancez `gui.py` (ou `client.py`)\n"
+            "2. Collez le token reçu en DM\n"
+            "3. Choisissez votre candidat\n"
+            "4. Copiez le token de vote généré\n"
+            "5. Envoyez-le avec `$vote <token>`"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🧾 Contre-valeur",
+        value=(
+            "À la fin du vote, un tableau affiche la **contre-valeur** (hash) de chaque bulletin.\n"
+            "Vous pouvez vérifier que votre vote n'a pas été altéré : "
+            "votre contre-valeur = `SHA256(<participation_id>|<numéro_du_choix>)`"
+        ),
+        inline=False
+    )
+
+    embed.set_footer(text="Les résultats sont affichés automatiquement à la fin du vote.")
+    await ctx.send(embed=embed)
 
 @bot.command()
 async def say(ctx, *text):

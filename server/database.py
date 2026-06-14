@@ -29,7 +29,8 @@ def initialize_database():
         CREATE TABLE IF NOT EXISTS votes(
             participation_id TEXT PRIMARY KEY,
             session_id TEXT,
-            choice INTEGER
+            choice INTEGER,
+            vote_hash TEXT
         )
         """)
 
@@ -53,13 +54,13 @@ def get_session(session_id):
         return cursor.fetchone()
 
 
-def register_vote(participation_id, session_id, choice):
+def register_vote(participation_id, session_id, choice, vote_hash):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
         INSERT OR REPLACE INTO votes
-        VALUES (?, ?, ?)
-        """, (participation_id, session_id, choice))
+        VALUES (?, ?, ?, ?)
+        """, (participation_id, session_id, choice, vote_hash))
 
 
 def get_votes(session_id):
@@ -67,6 +68,16 @@ def get_votes(session_id):
         cursor = conn.cursor()
         cursor.execute(
             "SELECT choice FROM votes WHERE session_id=?",
+            (session_id,)
+        )
+        return cursor.fetchall()
+
+
+def get_votes_with_hash(session_id):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT choice, vote_hash FROM votes WHERE session_id=?",
             (session_id,)
         )
         return cursor.fetchall()
