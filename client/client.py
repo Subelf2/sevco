@@ -18,7 +18,7 @@ class VoteApp(tk.Tk):
         self.title("Vote Sécurisé")
         self.resizable(True, True)
         self.minsize(400, 380)
-        self.geometry("560x480")
+        self.geometry("560x520")  # Légèrement agrandi pour accueillir le nouveau bloc
         self.configure(padx=24, pady=20)
 
         self.public_key = load_public_key()
@@ -59,7 +59,6 @@ class VoteApp(tk.Tk):
 
     def _track_widget(self, widget, role):
         self._scalable.append((widget, role))
-        # Applique immédiatement la taille courante (corrige le resize à la transition)
         s = self._sizes()
         family = "Courier" if role == "mono" else ""
         try:
@@ -68,7 +67,7 @@ class VoteApp(tk.Tk):
             pass
         return widget
 
-    # ── Step 1 : saisie du token ──────────────────────────────────────────
+    # ── Step 1 : Saisie du token ──────────────────────────────────────────
 
     def _build_step1(self):
         self._scalable.clear()
@@ -118,7 +117,7 @@ class VoteApp(tk.Tk):
             self.after(0, lambda: self._set_status("Token invalide ou corrompu."))
             self.after(0, lambda: self.btn_verify.config(state="normal", text="Vérifier le token"))
 
-    # ── Step 2 : choix du candidat ────────────────────────────────────────
+    # ── Step 2 : Choix du candidat ────────────────────────────────────────
 
     def _show_step2(self):
         self.frame.destroy()
@@ -181,7 +180,7 @@ class VoteApp(tk.Tk):
             self.after(0, lambda: self._set_status(f"Erreur : {e}"))
             self.after(0, lambda: self.btn_vote.config(state="normal", text="Chiffrer mon vote"))
 
-    # ── Step 3 : token + contre-valeur ───────────────────────────────────
+    # ── Step 3 : Token + Contre-valeurs ───────────────────────────────────
 
     def _show_step3(self, encrypted, vote_hash):
         self.frame.destroy()
@@ -189,7 +188,10 @@ class VoteApp(tk.Tk):
         self.frame = tk.Frame(self)
         self.frame.pack(fill="both", expand=True)
         self.frame.columnconfigure(0, weight=1)
-        self.frame.rowconfigure(1, weight=1)  # zone token s'étire
+        self.frame.rowconfigure(1, weight=1)  # Zone token s'étire
+
+        # Stockage de la référence de la contre-valeur d'origine
+        self.original_hash = vote_hash
 
         # ── Token ──
         self._track_widget(
@@ -203,7 +205,7 @@ class VoteApp(tk.Tk):
         token_text.grid(row=1, column=0, sticky="nsew")
         self._track_widget(token_text, "mono")
 
-        # Boutons token — sur une seule ligne, bien espacés
+        # Boutons token
         row_btn1 = tk.Frame(self.frame)
         row_btn1.grid(row=2, column=0, sticky="ew", pady=(8, 0))
         row_btn1.columnconfigure((0, 1), weight=1)
@@ -221,40 +223,62 @@ class VoteApp(tk.Tk):
             row=3, column=0, sticky="ew", pady=(14, 0)
         )
 
-        # ── Bloc contre-valeur ──
-        warn_frame = tk.Frame(self.frame, bg="#fff8e1", relief="flat", bd=0)
-        warn_frame.grid(row=4, column=0, sticky="ew", pady=(10, 0))
-        warn_frame.columnconfigure(1, weight=1)
+        # ── Bloc contre-valeur générée ──
+        self._track_widget(
+            tk.Label(self.frame, text="Contre-valeur locale (générée par l'app)", anchor="w", fg="#7a5c00"),
+            "small"
+        ).grid(row=4, column=0, sticky="ew", pady=(10, 2))
 
-        # Pictogramme
-        lbl_icon = tk.Label(warn_frame, text="⚠️", bg="#fff8e1")
-        lbl_icon.grid(row=0, column=0, rowspan=2, padx=(10, 8), pady=10, sticky="n")
-        self._track_widget(lbl_icon, "warn")
-
-        lbl_warn_title = tk.Label(
-            warn_frame,
-            text="Note ta contre-valeur (important)",
-            anchor="w", bg="#fff8e1", fg="#7a5c00"
-        )
-        lbl_warn_title.grid(row=0, column=1, sticky="ew", pady=(10, 2))
-        self._track_widget(lbl_warn_title, "body")
-
-        hash_text = tk.Text(self.frame, height=2, wrap="word")
+        hash_text = tk.Text(self.frame, height=1.5, wrap="word")
         hash_text.insert("1.0", vote_hash)
         hash_text.config(state="disabled")
-        hash_text.grid(row=5, column=0, sticky="ew", pady=(6, 0))
+        hash_text.grid(row=5, column=0, sticky="ew")
         self._track_widget(hash_text, "mono")
 
         btn_copy_hash = tk.Button(
             self.frame, text="📋  Copier la contre-valeur",
             command=lambda: self._copy(vote_hash)
         )
-        btn_copy_hash.grid(row=6, column=0, sticky="ew", pady=(6, 0))
+        btn_copy_hash.grid(row=6, column=0, sticky="ew", pady=(4, 0))
         self._track_widget(btn_copy_hash, "btn")
 
+        # Bloc comparaison contre valeur
+        self._track_widget(
+            tk.Label(self.frame, text="Coller la contre-valeur reçue pour comparer :", anchor="w"),
+            "small"
+        ).grid(row=7, column=0, sticky="ew", pady=(12, 2))
+
+        # Utilisation d'une Entry (plus adaptée pour une ligne de texte simple)
+        self.compare_entry = tk.Entry(self.frame)
+        self.compare_entry.grid(row=8, column=0, sticky="ew")
+        self._track_widget(self.compare_entry, "mono")
+        
+        # Déclenche la comparaison en temps réel dès que l'utilisateur tape ou colle
+        self.compare_entry.bind("<KeyRelease>", self._check_hash_equality)
+
+        # Zone de résultat de la comparaison (Texte dynamique)
+        self.comparison_status_lbl = tk.Label(self.frame, text="En attente de la seconde contre-valeur...", fg="gray", anchor="w")
+        self.comparison_status_lbl.grid(row=9, column=0, sticky="ew", pady=(4, 0))
+        self._track_widget(self.comparison_status_lbl, "body")
+
+        # Label de status général (ex: "Copié !")
         self.status_lbl = tk.Label(self.frame, text="", fg="gray", anchor="w")
-        self.status_lbl.grid(row=7, column=0, sticky="ew", pady=(4, 0))
+        self.status_lbl.grid(row=10, column=0, sticky="ew", pady=(4, 0))
         self._track_widget(self.status_lbl, "small")
+
+    # ── NOUVELLE FONCTION : Vérification ─────────────────────────────────
+
+    def _check_hash_equality(self, event=None):
+        input_hash = self.compare_entry.get().strip()
+        
+        if not input_hash:
+            self.comparison_status_lbl.config(text="En attente de la seconde contre-valeur...", fg="gray")
+            return
+            
+        if input_hash.lower() == self.original_hash.lower():
+            self.comparison_status_lbl.config(text="✅ Les contre-valeurs correspondent !", fg="green")
+        else:
+            self.comparison_status_lbl.config(text="❌ Les contre-valeurs sont différentes !", fg="red")
 
     # ── Helpers ───────────────────────────────────────────────────────────
 
