@@ -260,4 +260,4 @@ This project implements the **Belenios** voting protocol.
 
 ---
 
-**Vote responsibly.** 🗳️
+**Vote responsibly.**
