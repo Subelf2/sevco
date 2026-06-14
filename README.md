@@ -1,10 +1,10 @@
-# SEVCO - Encrypted End-to-End Voting Protocol
+# DiscoVote - Encrypted End-to-End Voting Protocol
 
-A cryptographic voting system built on Discord that prevents single-authority manipulation and allows voters to verify their ballots.
+A cryptographic voting system built on Discord that prevents single-authority manipulation and allows voters to verify their ballots. This project was done for the SEVCO course from EPITA.
 
 ## Table of Contents
 
-- [What is SEVCO?](#what-is-sevco)
+- [What is DiscoVote?](#what-is-sevco)
 - [Setup](#setup)
 - [Quick Start](#quick-start)
 - [Full Walkthrough](#full-walkthrough)
@@ -12,9 +12,9 @@ A cryptographic voting system built on Discord that prevents single-authority ma
 
 ---
 
-## What is SEVCO?
+## What is DiscoVote?
 
-SEVCO uses threshold cryptography to implement a verifiable voting protocol:
+DiscoVote uses threshold cryptography to implement a verifiable voting protocol:
 
 - **End-to-end encrypted**: Votes are encrypted on your machine. Discord never sees the plaintext ballot.
 - **Threshold decryption**: 3 authorities each hold 1/3 of the decryption key. No single authority can decrypt votes alone.
@@ -253,11 +253,10 @@ Look for your tracking hash from Step 6. If it's there, your ballot made it into
 
 ## References
 
-This project implements the **Belenios** voting protocol.
+This project was inspired by the **Belenios** voting protocol, and is based on **Discord**.
 
 - Belenios docs: https://www.belenios.org/
 - ZKP cryptography: https://en.wikipedia.org/wiki/Zero-knowledge_proof
+- Discord: https://discord.com
 
 ---
-
-**Vote responsibly.**
